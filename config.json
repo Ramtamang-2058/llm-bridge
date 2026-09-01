@@ -1,0 +1,35 @@
+{
+  "runtime": {
+    "db_path": "tasks.db",
+    "auth_dir": "auth"
+  },
+  "services": {
+    "claude": {
+      "name": "Claude",
+      "url": "https://claude.ai/new",
+      "state_file": "claude_state.json",
+      "input_selector": "div[contenteditable='true']",
+      "send_selector": "button[aria-label='Send message']",
+      "streaming_selector": "button[aria-label='Stop response']",
+      "response_selector": "div.font-claude-message"
+    },
+    "chatgpt": {
+      "name": "ChatGPT",
+      "url": "https://chatgpt.com/",
+      "state_file": "gpt_state.json",
+      "input_selector": "#prompt-textarea",
+      "send_selector": "button[data-testid='send-button']",
+      "streaming_selector": "button[data-testid='stop-button']",
+      "response_selector": "div[data-message-author-role='assistant']"
+    },
+    "gemini": {
+      "name": "Gemini",
+      "url": "https://gemini.google.com/app",
+      "state_file": "gemini_state.json",
+      "input_selector": "div.ql-editor",
+      "send_selector": "button[aria-label='Send message']",
+      "streaming_selector": "button[aria-label='Stop response']",
+      "response_selector": "message-content"
+    }
+  }
+}

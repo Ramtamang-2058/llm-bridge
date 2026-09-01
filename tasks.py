@@ -2,26 +2,32 @@
 Simple local task queue backed by SQLite. Plain JSON/text fields —
 no hashing — so you can open tasks.db with any SQLite viewer and
 read exactly what happened.
+
+DB path is resolved from config.json via settings.py, so it works
+anywhere on any OS.
 """
 import sqlite3
 from datetime import datetime, timezone
 
-DB_PATH = "tasks.db"
+import settings
+
+DB_PATH = settings.db_path()
 
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = get_conn()
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            assigned_to TEXT NOT NULL,       -- 'claude' | 'chatgpt' | 'gemini'
+            assigned_to TEXT NOT NULL,       -- service key e.g. 'claude'
             prompt TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',  -- pending | in_progress | done | error
             result TEXT,
@@ -57,6 +63,20 @@ def get_next_pending():
     return dict(row) if row else None
 
 
+def list_tasks(limit: int = 50, status: str = None):
+    conn = get_conn()
+    sql = "SELECT * FROM tasks"
+    params = []
+    if status:
+        sql += " WHERE status = ?"
+        params.append(status)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def mark_in_progress(task_id: int):
     _update(task_id, status="in_progress")
 
@@ -81,9 +101,9 @@ def _update(task_id: int, status: str, result: str = None):
 
 
 if __name__ == "__main__":
+    # Quick manual test: `python tasks.py` seeds one task per service.
     import json
 
-    # Quick manual test: `python queue.py` seeds one task per service.
     init_db()
     add_task("gemini", "Open the shared tracking sheet and list any rows marked 'pending'.")
     add_task("chatgpt", "Summarize today's open Jira tickets assigned to me in 3 bullet points.")

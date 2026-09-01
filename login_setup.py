@@ -5,41 +5,50 @@ solving 2FA/CAPTCHAs yourself — then saves the session so future
 runs start already logged in.
 
 Usage:
-    python login_setup.py claude
-    python login_setup.py chatgpt
-    python login_setup.py gemini
+    python login_setup.py [service]     # e.g. python login_setup.py claude
+    python login_setup.py --all          # do every service in config.json
 """
 import asyncio
-import os
 import sys
 from playwright.async_api import async_playwright
-from browsers import SERVICES, AUTH_DIR
+
+import settings
 
 
-async def main(service: str):
-    if service not in SERVICES:
-        print(f"Unknown service '{service}'. Choose from: {list(SERVICES)}")
+def _services_to_login(argv):
+    if "--all" in argv:
+        return list(settings.services().keys())
+    for arg in argv:
+        if arg in settings.services():
+            return [arg]
+    return None
+
+
+async def login_service(page, key, cfg, base_dir):
+    print(f"\n>>> Logging in to {cfg.get('name', key)} ({cfg['url']})")
+    await page.goto(cfg["url"])
+    input("Log in and click 'Send' once in the window. Then press Enter here... ")
+    state = settings.state_file_for(key)
+    await page.context.storage_state(path=str(state))
+    print(f"    saved session -> {state}")
+
+
+async def main(argv):
+    targets = _services_to_login(argv)
+    if not targets:
+        print("Usage: python login_setup.py <service> | --all")
+        print(f"Services: {list(settings.services().keys())}")
         return
 
-    os.makedirs(AUTH_DIR, exist_ok=True)
-    cfg = SERVICES[service]
-
+    settings.auth_dir().mkdir(parents=True, exist_ok=True)
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
         context = await browser.new_context()
         page = await context.new_page()
-        await page.goto(cfg["url"])
-
-        print(f"\nLog into {service} in the opened window.")
-        input("Once you're fully logged in and see the chat screen, press Enter here... ")
-
-        await context.storage_state(path=cfg["state_file"])
-        print(f"Saved session to {cfg['state_file']}")
+        for key in targets:
+            await login_service(page, key, settings.services()[key], settings.auth_dir())
         await browser.close()
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python login_setup.py <claude|chatgpt|gemini>")
-        sys.exit(1)
-    asyncio.run(main(sys.argv[1]))
+    asyncio.run(main(sys.argv[1:]))
