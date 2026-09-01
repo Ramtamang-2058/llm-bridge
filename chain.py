@@ -39,7 +39,7 @@ async def chain(bridge, goal: str, route, timeout_s: int = 120) -> str:
     return transcript
 
 
-async def run_chain(goal: str, route, headless: bool = True) -> str:
+async def run_chain(goal: str, route, headless: bool = True, attach: bool = False) -> str:
     from services import LLMBridge
 
     # Validate before launching a browser.
@@ -47,7 +47,7 @@ async def run_chain(goal: str, route, headless: bool = True) -> str:
 
     bridge = LLMBridge()
     try:
-        await bridge.start(headless=headless)
+        await bridge.start(headless=headless, attach=attach)
         transcript = await chain(bridge, goal, route)
     finally:
         await bridge.stop()

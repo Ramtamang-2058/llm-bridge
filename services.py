@@ -11,10 +11,13 @@ Before first real run: open each site, right-click the input box and the
 send button, "Inspect", and paste the real selectors into config.json.
 """
 import asyncio
+from urllib.parse import urlparse
 
 from playwright.async_api import async_playwright, Page
 
 import settings
+
+DEFAULT_DEBUG_URL = "http://127.0.0.1:9222"
 
 
 class LLMBridge:
@@ -25,13 +28,19 @@ class LLMBridge:
         self.browser = None
         self.contexts = {}
         self.pages: dict[str, Page] = {}
+        self.owned_pages: set[Page] = set()
         self.config = settings.services()
+        self.attach_mode = False
 
-    async def start(self, headless: bool = True):
+    async def start(self, headless: bool = True, attach: bool = False, debug_url: str = DEFAULT_DEBUG_URL):
         settings.auth_dir().mkdir(parents=True, exist_ok=True)
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(headless=headless)
 
+        if attach:
+            await self._start_attached(debug_url)
+            return
+
+        self.browser = await self.playwright.chromium.launch(headless=headless)
         for key, cfg in self.config.items():
             state = settings.state_file_for(key)
             # storage_state persists cookies/localStorage between runs —
@@ -48,12 +57,71 @@ class LLMBridge:
             self.contexts[key] = context
             self.pages[key] = page
 
+    async def _start_attached(self, debug_url: str):
+        """Attach to a persistent Chrome instance (see browser_attach.py).
+
+        Reuses a tab that's already open on a service's site instead of
+        opening a new one, so conversations persist between runs.
+        """
+        self.attach_mode = True
+        try:
+            self.browser = await self.playwright.chromium.connect_over_cdp(debug_url)
+        except Exception:
+            raise RuntimeError(
+                f"Could not attach to browser at {debug_url}. "
+                "Is it running? Run `python browser_attach.py start` once."
+            )
+
+        contexts = self.browser.contexts
+        if not contexts:
+            raise RuntimeError("Attached browser has no contexts. Open at least one window.")
+        context = contexts[0]
+
+        for key, cfg in self.config.items():
+            page = self._find_tab(context, cfg["url"])
+            if page:
+                print(f"[{key}] reusing existing tab: {page.url}")
+            else:
+                page = await context.new_page()
+                await page.goto(cfg["url"])
+                self.owned_pages.add(page)
+                print(f"[{key}] opened new tab: {cfg['url']}")
+            self.contexts[key] = context
+            self.pages[key] = page
+
+    @staticmethod
+    def _find_tab(context, url: str):
+        """Find a tab already open on the same site (by host), else None."""
+        expected_host = urlparse(url).netloc
+        skip = {"about:blank", "chrome://newtab/", "", "edge://newtab/"}
+        for page in context.pages:
+            raw = page.url
+            if raw in skip:
+                continue
+            try:
+                host = urlparse(raw).netloc
+            except Exception:
+                host = ""
+            if host and host == expected_host:
+                return page
+        return None
+
+    async def _type_prompt(self, page: Page, cfg, prompt: str):
+        """Click the input and type the prompt (works for textarea + contenteditable)."""
+        try:
+            await page.click(cfg["input_selector"])
+            await page.fill(cfg["input_selector"], prompt)
+        except Exception:
+            # Fallback for widgets where fill() doesn't stick: type per key.
+            await page.click(cfg["input_selector"])
+            await page.keyboard.press("Control+A")
+            await page.keyboard.press_sequentially(prompt, delay=5)
+
     async def send_and_wait(self, service: str, prompt: str, timeout_s: int = 120) -> str:
         cfg = self.config[service]
         page = self.pages[service]
 
-        await page.click(cfg["input_selector"])
-        await page.fill(cfg["input_selector"], prompt)
+        await self._type_prompt(page, cfg, prompt)
         await page.click(cfg["send_selector"])
 
         # 1) Wait for the streaming indicator to appear then disappear —
@@ -84,8 +152,7 @@ class LLMBridge:
         blocks = await page.query_selector_all(cfg["response_selector"])
         baseline = await blocks[-1].inner_text() if blocks else ""
 
-        await page.click(cfg["input_selector"])
-        await page.fill(cfg["input_selector"], prompt)
+        await self._type_prompt(page, cfg, prompt)
         await page.click(cfg["send_selector"])
 
         # 1) Wait for the streaming indicator to appear then disappear.
@@ -145,6 +212,16 @@ class LLMBridge:
         return last_text or ""
 
     async def stop(self):
+        if self.attach_mode:
+            # In attach mode this is the user's own persistent browser.
+            # Only close tabs WE opened; never the user's other tabs.
+            for page in self.owned_pages:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+            await self.playwright.stop()
+            return
         for context in self.contexts.values():
             await context.close()
         if self.browser:

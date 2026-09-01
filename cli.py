@@ -44,7 +44,7 @@ def cmd_list(args):
 
 def cmd_run(args):
     import orchestrator
-    asyncio.run(orchestrator.run(headless=args.headless))
+    asyncio.run(orchestrator.run(headless=args.headless, attach=args.attach))
 
 
 def cmd_chain(args):
@@ -54,7 +54,7 @@ def cmd_chain(args):
     except ValueError as exc:
         print(f"Error: {exc}")
         sys.exit(1)
-    asyncio.run(chain.run_chain(args.goal, args.route, headless=args.headless))
+    asyncio.run(chain.run_chain(args.goal, args.route, headless=args.headless, attach=args.attach))
 
 
 def build_parser():
@@ -73,12 +73,14 @@ def build_parser():
 
     p_run = sub.add_parser("run", help="run the orchestrator loop")
     p_run.add_argument("--headless", action="store_true")
+    p_run.add_argument("--attach", action="store_true", help="reuse persistent browser tabs")
     p_run.set_defaults(func=cmd_run)
 
     p_chain = sub.add_parser("chain", help="auto-chain one goal through services")
     p_chain.add_argument("goal", help="the goal / prompt to start with")
     p_chain.add_argument("route", nargs="+", help=f"ordered service keys: {_service_keys()}")
     p_chain.add_argument("--headless", action="store_true")
+    p_chain.add_argument("--attach", action="store_true", help="reuse persistent browser tabs")
     p_chain.set_defaults(func=cmd_chain)
 
     return parser

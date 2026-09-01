@@ -7,3 +7,4 @@ venv/
 # Local runtime data — NOT for git (holds logged-in session cookies)
 auth/
 tasks.db
+browser_profile/
