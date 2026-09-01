@@ -17,6 +17,8 @@ to their servers from this script.
   any SQLite viewer.
 - **Finished-response detection** — waits for the streaming / "stop"
   indicator to disappear plus a text-stability check.
+- **Auto-chain** — one goal, feed each reply through a route of services
+  automatically (e.g. `gemini -> claude -> chatgpt`), get one final answer.
 - **Three front-ends** — CLI (`cli.py`), web dashboard (`dashboard.py`,
   stdlib only), and the orchestrator loop (`orchestrator.py`).
 
@@ -100,12 +102,27 @@ python orchestrator.py --headless # same thing
 The browser is a fully separate process from whatever you use normally,
 so it won't touch or steal focus from your own tabs.
 
+## Auto-chain: one goal through many services
+
+Send a single goal through an ordered route, feeding each reply into the
+next service automatically, and get one final answer.
+
+```bash
+python cli.py chain "Plan our launch week" gemini claude chatgpt
+```
+
+That sends the goal to Gemini, sends Gemini's reply to Claude, sends
+Claude's reply to ChatGPT, and prints the final result (plus saves the
+full per-service transcript into tasks.db). Use `--headless` to run
+silently.
+
 ## Project layout
 
 ```
 config.json        URLs + selectors + runtime settings (edit this)
 settings.py        loads config, resolves paths (cross-OS safe)
 services.py        Playwright driver (send + finished-detection)
+chain.py           auto-chain: send one goal through a route of services
 tasks.py           SQLite task queue
 orchestrator.py    the polling loop
 cli.py             add/list/run from the terminal

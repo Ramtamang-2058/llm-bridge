@@ -5,6 +5,7 @@ Usage:
     python cli.py add <service> "<prompt>"     # add a task
     python cli.py list [--status pending]      # view tasks
     python cli.py run [--headless]             # start the orchestrator loop
+    python cli.py chain "<goal>" s1 s2 s3      # auto-chain through services
 """
 import argparse
 import asyncio
@@ -46,6 +47,16 @@ def cmd_run(args):
     asyncio.run(orchestrator.run(headless=args.headless))
 
 
+def cmd_chain(args):
+    import chain
+    try:
+        chain.validate_route(args.route)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
+    asyncio.run(chain.run_chain(args.goal, args.route, headless=args.headless))
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="cli.py", description="llm-bridge task queue CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -63,6 +74,12 @@ def build_parser():
     p_run = sub.add_parser("run", help="run the orchestrator loop")
     p_run.add_argument("--headless", action="store_true")
     p_run.set_defaults(func=cmd_run)
+
+    p_chain = sub.add_parser("chain", help="auto-chain one goal through services")
+    p_chain.add_argument("goal", help="the goal / prompt to start with")
+    p_chain.add_argument("route", nargs="+", help=f"ordered service keys: {_service_keys()}")
+    p_chain.add_argument("--headless", action="store_true")
+    p_chain.set_defaults(func=cmd_chain)
 
     return parser
 
