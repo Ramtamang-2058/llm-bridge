@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Local runtime data — NOT for git (holds logged-in session cookies)
+auth/
+tasks.db
