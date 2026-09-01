@@ -34,7 +34,7 @@ PROFILE_DIR = settings.root_path("browser_profile")
 CHROME_CANDIDATES = {
     "linux": [
         "google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
-        "microsoft-edge", "microsoft-edge-stable", "brave-browser",
+        "microsoft-edge", "microsoft-edge-stable", "brave-browser", "brave",
     ],
     "darwin": [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -49,8 +49,16 @@ CHROME_CANDIDATES = {
     ],
 }
 
+# Snap-specific paths (Brave via snap is common on Ubuntu).
+SNAP_BINARIES = [
+    "/snap/bin/brave",
+    "/snap/bin/chromium",
+    "/snap/bin/google-chrome",
+]
+
 
 def find_chrome():
+    # 1) Standard PATH candidates.
     if sys.platform in CHROME_CANDIDATES and sys.platform != "linux":
         for path in CHROME_CANDIDATES[sys.platform]:
             if os.path.exists(path):
@@ -59,6 +67,23 @@ def find_chrome():
         found = shutil.which(name)
         if found:
             return found
+
+    # 2) Snap binaries (common on Ubuntu).
+    for path in SNAP_BINARIES:
+        if os.path.exists(path):
+            return path
+
+    # 3) Playwright's own bundled Chromium — guaranteed to exist after
+    #    `playwright install chromium` and supports --remote-debugging-port.
+    playwright_dir = os.path.expanduser("~/.cache/ms-playwright")
+    if os.path.isdir(playwright_dir):
+        for folder in sorted(os.listdir(playwright_dir), reverse=True):
+            if not folder.startswith("chromium-") or "headless" in folder:
+                continue
+            candidate = os.path.join(playwright_dir, folder, "chrome-linux64", "chrome")
+            if os.path.isfile(candidate):
+                return candidate
+
     return None
 
 
